@@ -11,40 +11,23 @@ router.post('/', async (req, res) => {
     const newOrder = new Order(req.body);
     await newOrder.save();
 
-    // Attempt to match the order with any existing opposite type orders for the same stock and price
+    // Attempt to match the order
     const oppositeOrderType = orderType === 'buy' ? 'sell' : 'buy';
-    let match = await Order.findOne({ 
-      stock, 
-      orderType: oppositeOrderType, 
-      price, 
-      quantity: { $gte: newOrder.quantity - newOrder.filledQuantity },
-    }).sort({ createdAt: 1 }); // Find the earliest order that can fully or partially fill the new order
+    const match = await Order.findOne({ stock, orderType: oppositeOrderType, price, quantity });
 
     if (match) {
-      // Calculate the fillable quantity
-      const fillableQuantity = Math.min(quantity - newOrder.filledQuantity, match.quantity - match.filledQuantity);
-
-      // Update the filled quantities for both the new order and the matching order
-      newOrder.filledQuantity += fillableQuantity;
-      match.filledQuantity += fillableQuantity;
-
-      newOrder.status = newOrder.filledQuantity === newOrder.quantity ? 'filled' : 'partially_filled';
-await newOrder.save();
-
-if (match.filledQuantity === match.quantity) {
-  match.status = 'filled';
-} else {
-  match.status = 'partially_filled';
-}
-await match.save();
-
       // Update stock price with the matched order's price
       await Stock.findByIdAndUpdate(stock, { currentPrice: price });
-      
-      return res.status(200).json({ message: 'Order matched and executed partially or fully', newPrice: price });
+
+      // Here, we simply delete both orders for simplicity
+      // You might choose to update them instead based on your application logic
+      await Order.findByIdAndDelete(newOrder._id);
+      await Order.findByIdAndDelete(match._id);
+
+      return res.status(200).json({ message: 'Order matched and executed', newPrice: price });
     }
 
-   
+    // If no match, return the newly created order
     res.status(201).json(newOrder);
   } catch (error) {
     console.error(error);
